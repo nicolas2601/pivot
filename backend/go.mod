@@ -1,6 +1,8 @@
 module github.com/nicolas/finanzas/backend
 
-go 1.26.3
+go 1.23
+
+toolchain go1.26.3
 
 require (
 	github.com/gin-gonic/gin v1.10.0
