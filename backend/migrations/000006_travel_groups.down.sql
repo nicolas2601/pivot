@@ -1,0 +1,17 @@
+DROP TRIGGER IF EXISTS set_travel_groups_updated_at ON travel_groups;
+DROP INDEX IF EXISTS idx_travel_settlements_to_user;
+DROP INDEX IF EXISTS idx_travel_settlements_from_user;
+DROP INDEX IF EXISTS idx_travel_settlements_group_id;
+DROP INDEX IF EXISTS idx_travel_expense_shares_user_id;
+DROP INDEX IF EXISTS idx_travel_expense_shares_expense_id;
+DROP INDEX IF EXISTS idx_travel_expenses_date;
+DROP INDEX IF EXISTS idx_travel_expenses_paid_by;
+DROP INDEX IF EXISTS idx_travel_expenses_group_id;
+DROP INDEX IF EXISTS idx_travel_group_members_user_id;
+DROP INDEX IF EXISTS idx_travel_group_members_group_id;
+DROP INDEX IF EXISTS idx_travel_groups_created_by;
+DROP TABLE IF EXISTS travel_settlements;
+DROP TABLE IF EXISTS travel_expense_shares;
+DROP TABLE IF EXISTS travel_expenses;
+DROP TABLE IF EXISTS travel_group_members;
+DROP TABLE IF EXISTS travel_groups;
