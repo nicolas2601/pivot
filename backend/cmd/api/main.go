@@ -13,11 +13,15 @@ import (
 
 	"github.com/nicolas/finanzas/backend/internal/accounts"
 	"github.com/nicolas/finanzas/backend/internal/auth"
+	"github.com/nicolas/finanzas/backend/internal/budgets"
 	"github.com/nicolas/finanzas/backend/internal/categories"
 	"github.com/nicolas/finanzas/backend/internal/config"
 	"github.com/nicolas/finanzas/backend/internal/db"
 	"github.com/nicolas/finanzas/backend/internal/middleware"
+	"github.com/nicolas/finanzas/backend/internal/reports"
 	"github.com/nicolas/finanzas/backend/internal/server"
+	"github.com/nicolas/finanzas/backend/internal/transactions"
+	"github.com/nicolas/finanzas/backend/internal/travel"
 )
 
 func main() {
@@ -33,6 +37,7 @@ func main() {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
+	// --- Repositories ---
 	userRepo := auth.NewUserRepository(gormDB)
 	sessions := auth.NewSessionRepository(gormDB)
 	authSvc := auth.NewService(userRepo, sessions, cfg)
@@ -43,6 +48,30 @@ func main() {
 	catRepo := categories.NewCategoryRepository(gormDB)
 	catSvc := categories.NewService(catRepo)
 
+	txRepo := transactions.NewRepository(gormDB)
+
+	budgetRepo := budgets.NewRepository(gormDB)
+
+	travelRepo := travel.NewRepository(gormDB)
+
+	// --- Adapters ---
+	// Each adapter translates one service into the small contract another
+	// package expects. Keeping these in the *producing* package (the one
+	// that owns the data) avoids cross-package cycles and keeps the
+	// consumer free of concrete imports.
+	txAccountAdapter := accounts.NewTransactionAccountAdapter(accSvc)
+	txCategoryAdapter := categories.NewTransactionCategoryAdapter(catSvc)
+	budgetCategoryAdapter := categories.NewBudgetCategoryAdapter(catSvc)
+	travelUserAdapter := auth.NewTravelUserAdapter(userRepo)
+	reportBudgetAdapter := budgets.NewReportBudgetAdapter(budgetRepo)
+
+	// --- Services ---
+	txSvc := transactions.NewService(txRepo, txAccountAdapter, txCategoryAdapter)
+	budgetSvc := budgets.NewService(budgetRepo, budgetCategoryAdapter)
+	travelSvc := travel.NewService(travelRepo, travelUserAdapter)
+	reportSvc := reports.NewService(txRepo, reportBudgetAdapter)
+
+	// --- HTTP ---
 	r := server.New(gormDB)
 	r.Use(middleware.CORS())
 
@@ -61,6 +90,10 @@ func main() {
 	auth.RegisterRoutes(api, authSvc, cfg)
 	accounts.RegisterRoutes(api, accounts.NewHandler(accSvc), requireUserID)
 	categories.RegisterRoutes(api, categories.NewHandler(catSvc), requireUserID)
+	transactions.RegisterRoutes(api, transactions.NewHandler(txSvc), requireUserID)
+	budgets.RegisterRoutes(api, budgets.NewHandler(budgetSvc), requireUserID)
+	travel.RegisterRoutes(api, travel.NewHandler(travelSvc), requireUserID)
+	reports.RegisterRoutes(api, reports.NewHandler(reportSvc), requireUserID)
 
 	addr := ":" + cfg.Port
 	log.Printf("Server starting on %s", addr)
