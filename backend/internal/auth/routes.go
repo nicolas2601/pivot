@@ -1,22 +1,14 @@
 package auth
 
 import (
+	"errors"
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 
 	"github.com/nicolas/finanzas/backend/internal/config"
+	"github.com/nicolas/finanzas/backend/internal/middleware"
 )
-
-// userIDFromToken adapts auth.Service.Me to extract the userID as a string.
-// Kept as a closure so the routes file doesn't need to know the middleware type.
-func userIDFromToken(svc Service) func(string) (string, error) {
-	return func(token string) (string, error) {
-		user, err := svc.Me(token)
-		if err != nil {
-			return "", err
-		}
-		return user.ID.String(), nil
-	}
-}
 
 func RegisterRoutes(r *gin.RouterGroup, svc Service, cfg *config.Config) {
 	h := NewHandler(svc, cfg)
@@ -26,21 +18,36 @@ func RegisterRoutes(r *gin.RouterGroup, svc Service, cfg *config.Config) {
 		auth.POST("/login", h.Login)
 		auth.POST("/refresh", h.Refresh)
 		auth.POST("/logout", h.Logout)
-		// /me uses the new middleware via direct call from /me route
+		// /me uses the inline meRoute handler which extracts the bearer token,
+		// resolves the user, and stores it under "user" so h.Me can read it.
 		auth.GET("/me", meRoute(svc, h))
 	}
 }
 
+// meRoute is an inline handler that:
+//  1. Validates the Authorization header via middleware.ExtractBearer.
+//  2. Resolves the access token to a *User via Service.Me.
+//  3. Stores the user in the gin context under "user" so Handler.Me can read it.
+//
+// We avoid the global RequireUserID middleware here because /me needs the
+// full *User (not just the userID) for Handler.Me to return the user payload.
 func meRoute(svc Service, h *Handler) gin.HandlerFunc {
-	// Hand-rolled: validate token via service, then call handler
 	return func(c *gin.Context) {
-		// Reuse RequireUserID logic inline
-		uid, err := userIDFromToken(svc)(c.GetHeader("Authorization")[7:])
+		token, err := middleware.ExtractBearer(c.GetHeader("Authorization"))
 		if err != nil {
-			c.AbortWithStatusJSON(401, gin.H{"error": gin.H{"code": "INVALID_TOKEN"}})
+			code := "MISSING_TOKEN"
+			if errors.Is(err, middleware.ErrMalformedAuthHeader) {
+				code = "MALFORMED_TOKEN"
+			}
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": gin.H{"code": code, "message": "Token requerido o mal formado"}})
 			return
 		}
-		_ = uid
+		user, err := svc.Me(token)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": gin.H{"code": "INVALID_TOKEN", "message": "Token inválido"}})
+			return
+		}
+		c.Set("user", user)
 		h.Me(c)
 	}
 }

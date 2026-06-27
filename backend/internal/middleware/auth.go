@@ -1,8 +1,8 @@
 package middleware
 
 import (
+	"errors"
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -14,9 +14,15 @@ type UserIDResolver func(accessToken string) (userID string, err error)
 // the userID as "userID" in the gin context.
 func RequireUserID(resolver UserIDResolver) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		token := extractBearerToken(c)
-		if token == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": gin.H{"code": "MISSING_TOKEN", "message": "Token requerido"}})
+		token, err := extractBearerToken(c)
+		if err != nil {
+			code := "MISSING_TOKEN"
+			if errors.Is(err, ErrMalformedAuthHeader) {
+				code = "MALFORMED_TOKEN"
+			}
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+				"error": gin.H{"code": code, "message": "Token requerido o mal formado"},
+			})
 			return
 		}
 		userID, err := resolver(token)
@@ -29,14 +35,9 @@ func RequireUserID(resolver UserIDResolver) gin.HandlerFunc {
 	}
 }
 
-func extractBearerToken(c *gin.Context) string {
-	authHeader := c.GetHeader("Authorization")
-	if authHeader == "" {
-		return ""
-	}
-	parts := strings.SplitN(authHeader, " ", 2)
-	if len(parts) != 2 || parts[0] != "Bearer" {
-		return ""
-	}
-	return parts[1]
+// extractBearerToken is a thin gin-aware wrapper around the public ExtractBearer
+// helper. Kept private so middleware callers go through RequireUserID; external
+// callers should use ExtractBearer directly with c.GetHeader("Authorization").
+func extractBearerToken(c *gin.Context) (string, error) {
+	return ExtractBearer(c.GetHeader("Authorization"))
 }
