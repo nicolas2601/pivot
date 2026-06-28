@@ -17,6 +17,7 @@ import (
 	"github.com/nicolas/finanzas/backend/internal/categories"
 	"github.com/nicolas/finanzas/backend/internal/config"
 	"github.com/nicolas/finanzas/backend/internal/db"
+	"github.com/nicolas/finanzas/backend/internal/goals"
 	"github.com/nicolas/finanzas/backend/internal/middleware"
 	"github.com/nicolas/finanzas/backend/internal/reports"
 	"github.com/nicolas/finanzas/backend/internal/server"
@@ -40,19 +41,26 @@ func main() {
 	// --- Repositories ---
 	userRepo := auth.NewUserRepository(gormDB)
 	sessions := auth.NewSessionRepository(gormDB)
-	authSvc := auth.NewService(userRepo, sessions, cfg)
-
-	accRepo := accounts.NewAccountRepository(gormDB)
-	accSvc := accounts.NewService(accRepo)
+	baseAuthSvc := auth.NewService(userRepo, sessions, cfg)
 
 	catRepo := categories.NewCategoryRepository(gormDB)
 	catSvc := categories.NewService(catRepo)
+
+	// Wire the categories service into auth so registration seeds default ES
+	// categories for the new user. auth.WithCategorySeeder keeps the dep
+	// arrow one-way (auth declares the interface; main wires the concrete).
+	authSvc := auth.WithCategorySeeder(baseAuthSvc, catSvc)
+
+	accRepo := accounts.NewAccountRepository(gormDB)
+	accSvc := accounts.NewService(accRepo)
 
 	txRepo := transactions.NewRepository(gormDB)
 
 	budgetRepo := budgets.NewRepository(gormDB)
 
 	travelRepo := travel.NewRepository(gormDB)
+
+	goalRepo := goals.NewRepository(gormDB)
 
 	// --- Adapters ---
 	// Each adapter translates one service into the small contract another
@@ -64,12 +72,14 @@ func main() {
 	budgetCategoryAdapter := categories.NewBudgetCategoryAdapter(catSvc)
 	travelUserAdapter := auth.NewTravelUserAdapter(userRepo)
 	reportBudgetAdapter := budgets.NewReportBudgetAdapter(budgetRepo)
+	goalAccountAdapter := accounts.NewGoalsAccountAdapter(accSvc)
 
 	// --- Services ---
 	txSvc := transactions.NewService(txRepo, txAccountAdapter, txCategoryAdapter)
 	budgetSvc := budgets.NewService(budgetRepo, budgetCategoryAdapter)
 	travelSvc := travel.NewService(travelRepo, travelUserAdapter)
 	reportSvc := reports.NewService(txRepo, reportBudgetAdapter)
+	goalSvc := goals.NewService(goalRepo, goalAccountAdapter)
 
 	// --- HTTP ---
 	r := server.New(gormDB)
@@ -94,6 +104,7 @@ func main() {
 	budgets.RegisterRoutes(api, budgets.NewHandler(budgetSvc), requireUserID)
 	travel.RegisterRoutes(api, travel.NewHandler(travelSvc), requireUserID)
 	reports.RegisterRoutes(api, reports.NewHandler(reportSvc), requireUserID)
+	goals.RegisterRoutes(api, goals.NewHandler(goalSvc), requireUserID)
 
 	addr := ":" + cfg.Port
 	log.Printf("Server starting on %s", addr)
