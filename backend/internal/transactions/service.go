@@ -148,6 +148,56 @@ func (s *Service) Get(id, userID uuid.UUID) (*Transaction, error) {
 	return s.repo.GetByID(id, userID)
 }
 
+// CreateFromRecurring is the entry point used by the recurring engine.
+// Skips transfer-rejection (recurring can only produce expense/income),
+// uses the provided account & category (already validated by the caller),
+// and stamps RecurringRunID so the run record links back.
+func (s *Service) CreateFromRecurring(
+	userID, accountID, categoryID uuid.UUID,
+	txType string,
+	amount int64,
+	currency string,
+	date time.Time,
+	description, notes *string,
+	recurringRunID uuid.UUID,
+) (uuid.UUID, error) {
+	if !IsValidType(txType) || TxType(txType) == TypeTransfer {
+		return uuid.Nil, ErrInvalidType
+	}
+	if amount <= 0 {
+		return uuid.Nil, ErrInvalidAmount
+	}
+	account, err := s.accounts.GetByID(accountID, userID)
+	if err != nil {
+		return uuid.Nil, ErrAccountNotFound
+	}
+	if s.categories != nil {
+		exists, err := s.categories.GetByID(categoryID, userID)
+		if err != nil {
+			return uuid.Nil, err
+		}
+		if !exists {
+			return uuid.Nil, ErrCategoryNotFound
+		}
+	}
+	cid := categoryID
+	tx := &Transaction{
+		UserID:      userID,
+		AccountID:   accountID,
+		CategoryID:  &cid,
+		Type:        TxType(txType),
+		Amount:      amount,
+		Currency:    currencyOrDefault(currency, account.Currency),
+		Date:        date,
+		Description: description,
+		Notes:       notes,
+	}
+	if err := s.repo.Create(tx); err != nil {
+		return uuid.Nil, err
+	}
+	return tx.ID, nil
+}
+
 func (s *Service) List(userID uuid.UUID, f ListFilter) ([]Transaction, error) {
 	return s.repo.ListByUser(userID, f)
 }

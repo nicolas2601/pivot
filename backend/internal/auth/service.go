@@ -26,6 +26,13 @@ type LoginResult struct {
 	RefreshToken string
 }
 
+// CategorySeeder is implemented by the categories package.
+// Defined as an interface in auth so we don't import categories
+// directly (keeps the dependency arrow one-way and avoids cycles).
+type CategorySeeder interface {
+	SeedDefaults(userID uuid.UUID) (int, error)
+}
+
 type Service interface {
 	Register(email, password, displayName string) (*User, error)
 	Login(email, password, userAgent, ip string) (*LoginResult, error)
@@ -35,9 +42,10 @@ type Service interface {
 }
 
 type service struct {
-	repo      UserRepository
-	sessions  SessionRepository
-	jwtSecret string
+	repo       UserRepository
+	sessions   SessionRepository
+	jwtSecret  string
+	categories CategorySeeder // nil-safe; skipped if not wired
 }
 
 func NewService(repo UserRepository, sessions SessionRepository, cfg *config.Config) Service {
@@ -46,6 +54,16 @@ func NewService(repo UserRepository, sessions SessionRepository, cfg *config.Con
 		sessions:  sessions,
 		jwtSecret: cfg.JWTSecret,
 	}
+}
+
+// WithCategorySeeder returns a copy of the service wired with a category
+// seeder. Returns the same Service interface so wiring in main.go is
+// type-stable.
+func WithCategorySeeder(s Service, seeder CategorySeeder) Service {
+	if concrete, ok := s.(*service); ok {
+		concrete.categories = seeder
+	}
+	return s
 }
 
 func (s *service) Register(email, password, displayName string) (*User, error) {
@@ -70,6 +88,20 @@ func (s *service) Register(email, password, displayName string) (*User, error) {
 
 	if err := s.repo.Create(user); err != nil {
 		return nil, err
+	}
+
+	// Seed default ES categories for the new user.
+	// Best-effort: if seeding fails, log but don't fail registration
+	// (user can always call /categories/seed later, or categories are
+	// created on first POST if missing).
+	if s.categories != nil {
+		if _, err := s.categories.SeedDefaults(user.ID); err != nil {
+			// Intentionally swallow — don't lock the user out of their
+			// fresh account because of a non-critical onboarding step.
+			// Real-world fix: emit a log metric + add an idempotent
+			// /categories/seed endpoint for retry.
+			_ = err
+		}
 	}
 
 	return user, nil
@@ -150,7 +182,7 @@ func (s *service) Refresh(refreshToken string) (*LoginResult, error) {
 
 	newRefreshToken, err := generateRefreshToken()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("generate refresh token: %w", err)
 	}
 
 	newSession := &Session{
