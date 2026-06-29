@@ -45,16 +45,17 @@ solo dev. Status: `📋 backlog` → `🚧 in-progress` → `✅ done`.
 
 ## Pendientes
 
-### 📋 #1 — Frontend goals + recurring [#1-feat-goals-recurring-frontend]
-Branch: `feat/goals-recurring-frontend` → worktree `.worktrees/feat-goals-recurring-frontend/`
-Estado: ✅ done (5 atomic commits, ready to merge)
-Commits:
+### 📋 #1 — Frontend goals + recurring ✅
+Branch: `feat/goals-recurring-frontend` → merged to main (commit 0f7d774)
+Estado: ✅ done
+
+Merged 5 atomic commits:
 - 095a02b feat(web): add Zod schemas + tests for goals and recurring
 - 700733f feat(web): add API clients for goals and recurring
 - b353518 feat(web): goals pages — list, new, detail with deposit/withdraw/delete
 - 98d4b9f feat(web): recurring pages — list, new, detail with run-now + history
 - 9a923c1 feat(web): BottomNav 2x4 grid + NavIcon for goals/recurring/budgets
-Diff vs main: +1989 / -31 lines across 14 files.
+
 Backend ya está wired; frontend debe tener:
 - [x] Zod schemas (`goal.ts`, `recurring.ts`) con tests
 - [x] API clients (`goals.ts`, `recurring.ts`)
@@ -63,8 +64,7 @@ Backend ya está wired; frontend debe tener:
 - [x] BottomNav extendido con `target` (Metas) y `repeat` (Recurrentes) icons
 - [x] NavIcon component
 - [x] Commit atómico por unidad (schemas → pages → nav)
-- [ ] PR description (pendiente — no hay remote)
-- [ ] Merge a main cuando se decida (squash o 5 commits?)
+- [x] Merge a main (no-ff para preservar el branch story)
 
 ### 📋 #2 — Backend unit tests para nuevos packages ✅
 Branch: `feat/backend-tests-phase3` → merged to main (commit facebbc)
