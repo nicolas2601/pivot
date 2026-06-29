@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./lib/motion/motion.css";
 
 /* DESIGN.md tokens — ElevenLabs-inspired editorial palette.
  * Waldenburg is licensed; Cormorant Garamond is the open-source substitute

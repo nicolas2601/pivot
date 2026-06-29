@@ -1,0 +1,126 @@
+/* Motion tokens — used site-wide. Pair with $lib/motion/transitions.
+   All entrance animations must respect prefers-reduced-motion. */
+
+:root {
+  --motion-fast: 120ms;
+  --motion-medium: 240ms;
+  --motion-slow: 360ms;
+  --motion-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Subtle press feedback on buttons / interactive surfaces. */
+.press {
+  transition:
+    transform var(--motion-fast) var(--motion-ease),
+    background-color var(--motion-fast) var(--motion-ease),
+    box-shadow var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease);
+}
+.press:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* Hover lift for cards */
+.lift {
+  transition:
+    transform var(--motion-medium) var(--motion-ease),
+    box-shadow var(--motion-medium) var(--motion-ease),
+    border-color var(--motion-medium) var(--motion-ease);
+}
+.lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 24px -8px rgb(12 10 9 / 0.12);
+}
+
+/* Underline grow for text links inside paragraphs */
+.link-underline {
+  background-image: linear-gradient(currentColor, currentColor);
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+  background-size: 0 1px;
+  transition: background-size var(--motion-medium) var(--motion-ease);
+}
+.link-underline:hover {
+  background-size: 100% 1px;
+}
+
+/* Subtle focus ring that respects pressed state */
+:where(button, a, [role='button']):focus-visible {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 3px;
+  border-radius: 4px;
+  transition: outline-offset var(--motion-fast) var(--motion-ease);
+}
+
+/* Stagger via CSS variable — set by inViewport action */
+[data-in-view='true'].stagger > * {
+  opacity: 1;
+  transform: translateY(0);
+}
+.stagger > * {
+  opacity: 0;
+  transform: translateY(8px);
+  transition:
+    opacity var(--motion-medium) var(--motion-ease),
+    transform var(--motion-medium) var(--motion-ease);
+}
+
+/* Number flash (used in dashboard stats when value changes) */
+@keyframes flash-positive {
+  0% { color: var(--color-semantic-success); }
+  100% { color: inherit; }
+}
+@keyframes flash-negative {
+  0% { color: var(--color-semantic-error); }
+  100% { color: inherit; }
+}
+.flash-positive { animation: flash-positive 600ms var(--motion-ease); }
+.flash-negative { animation: flash-negative 600ms var(--motion-ease); }
+
+/* Skeleton shimmer for loading states */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.04) 0%,
+    rgba(0, 0, 0, 0.12) 50%,
+    rgba(0, 0, 0, 0.04) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+  border-radius: 4px;
+}
+
+/* On-view fade-up (used with inViewport + [data-in-view]) */
+.fade-on-view {
+  opacity: 0;
+  transform: translateY(10px);
+  transition:
+    opacity var(--motion-slow) var(--motion-ease),
+    transform var(--motion-slow) var(--motion-ease);
+}
+.fade-on-view[data-in-view='true'] {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Hard guard: never animate if the user asked us not to */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .stagger > *,
+  .fade-on-view {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}

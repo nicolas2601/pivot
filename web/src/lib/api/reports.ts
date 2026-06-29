@@ -52,9 +52,7 @@ export async function getByAccount(filters: ReportFilters = {}): Promise<ByAccou
   return ByAccountReportSchema.parse(res);
 }
 
-export async function getMonthlyTrend(
-  filters: ReportFilters = {}
-): Promise<MonthlyTrendReport> {
+export async function getMonthlyTrend(filters: ReportFilters = {}): Promise<MonthlyTrendReport> {
   const validated = ReportFiltersSchema.parse(filters);
   const res = await apiFetch<unknown>(`/reports/monthly-trend${buildQuery(validated)}`);
   return MonthlyTrendReportSchema.parse(res);

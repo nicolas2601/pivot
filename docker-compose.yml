@@ -15,7 +15,48 @@ services:
       test: ["CMD-SHELL", "pg_isready -U finanzas -d finanzas"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: finanzas-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://finanzas:finanzas_dev_password@postgres:5432/finanzas?sslmode=disable
+      JWT_SECRET: dev-secret-change-me-in-prod-please-this-is-not-secure-at-all-just-for-tests
+      PORT: 8080
+      GIN_MODE: debug
+      CORS_ORIGINS: http://localhost:4173,http://localhost:5173
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/api/v1/health >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  frontend:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    container_name: finanzas-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      PUBLIC_API_URL: http://localhost:8080/api/v1
+    ports:
+      - "4173:4173"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:4173/ >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
 
 volumes:
   postgres_data:

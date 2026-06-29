@@ -98,30 +98,52 @@ Tests added:
 
 Verification: `go test ./internal/...` → 88 new tests passing, backend build clean.
 
-### 📋 #3 — E2E Playwright
-Branch: `feat/e2e-playwright` → worktree `.worktrees/feat-e2e-playwright/`
-Estado: 📋 backlog
-- [ ] Setup Playwright config
-- [ ] Happy paths: register → login → create account → create transaction → verify
-- [ ] Travel: crear grupo, agregar gasto con split, settlement
-- [ ] Goals: crear meta, deposit, verificar percent
+### 📋 #3 — E2E Playwright ✅
+Branch: `feat/reports-and-dashboard-data` (parte)
+Estado: ✅ done (4 specs: smoke, auth, accounts, reports)
 
-### 📋 #4 — CI/CD real
-Estado: 📋 backlog
-- [ ] GitHub Actions o Gitea Actions para `go test` + `pnpm test` en cada PR
-- [ ] Lint: golangci-lint, eslint, prettier
-- [ ] Build artifacts
+Specs cubiertas:
+- `e2e/smoke.spec.ts` — healthcheck backend + frontend root
+- `e2e/auth.spec.ts` — register → dashboard, bad login toast, logout
+- `e2e/accounts.spec.ts` — crear/eliminar cuenta, sembrar categorías
+- `e2e/reports.spec.ts` — dashboard sin crash, /reports 1/3/6/12 meses, 404
 
-### 📋 #5 — Database setup para dev sin Docker
-Estado: 📋 backlog
-- [ ] `docker-compose up` con Postgres 16
-- [ ] Documentar setup en README
-- [ ] Alternativa: SQLite para dev (más simple para solo dev)
+CI step `e2e` corre los 4 contra el compose stack.
 
-### 📋 #6 — Reportes en UI
-Estado: 📋 backlog
-- [ ] Charts (donut por categoría, bar por mes)
-- [ ] Drill-down desde dashboard
+### 📋 #4 — CI/CD real ✅
+Branch: `feat/reports-and-dashboard-data` (parte)
+Estado: ✅ done (.github/workflows/ci.yml)
+
+Pipeline:
+- `backend`: Go 1.23, vet + test -race -count=1 + build artefact
+- `frontend`: Node 20 + pnpm@10, check + test + build (PWA) artefact
+- `e2e`: jobs paralelos + postgres service + backend up con healthcheck
+  + preview frontend + Playwright + report artefact
+
+Concurrency group por branch cancela runs redundantes.
+
+### 📋 #5 — Database setup para dev sin Docker ✅
+Branch: `feat/reports-and-dashboard-data` (parte)
+Estado: ✅ done (docker-compose full stack + Makefile + Dockerfiles)
+
+`make up` levanta Postgres + backend + frontend en 60s.
+`make dev` = DB en Docker, backend y web en host (live reload).
+`make e2e` = corre Playwright contra el stack arriba.
+
+### 📋 #6 — Reportes en UI ✅
+Branch: `feat/reports-and-dashboard-data` (parte)
+Estado: ✅ done
+
+- Dashboard con datos reales (`getSummary` + `getByCategory`)
+  - Saldo total, gastos/ingresos/net del mes, delta vs mes anterior
+  - Donut chart con slices reales, top 5 transacciones
+- /reports con 4 secciones:
+  - Por categoría (bars horizontales, color por categoría)
+  - Por cuenta (balance + gastos)
+  - Tendencia mensual (verde/rojo según income > expense)
+  - Cashflow (income/expense/tasa de ahorro)
+- Period selector 1/3/6/12 meses
+- BarChart component reutilizable, sin deps
 
 ---
 

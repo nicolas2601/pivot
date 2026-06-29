@@ -19,6 +19,7 @@
   import Card from '$lib/components/Card.svelte';
   import Modal from '$lib/components/Modal.svelte';
   import { getAccessToken, clearAccessToken } from '$lib/utils/auth-interceptor';
+  import { toast } from '$lib/stores/toast.svelte';
 
   const qc = useQueryClient();
 
@@ -32,7 +33,11 @@
 
   const deleteMutation = createMutation(() => ({
     mutationFn: (id: string) => deleteAccount(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['accounts'] })
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['accounts'] });
+      toast.success('Cuenta eliminada');
+    },
+    onError: (err: Error) => toast.error(err.message, 'No se pudo eliminar')
   }));
 
   onMount(async () => {

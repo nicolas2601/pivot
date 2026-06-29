@@ -20,6 +20,7 @@
   import Tabs from '$lib/components/Tabs.svelte';
   import Avatar from '$lib/components/Avatar.svelte';
   import { getAccessToken, clearAccessToken } from '$lib/utils/auth-interceptor';
+  import { toast } from '$lib/stores/toast.svelte';
 
   const qc = useQueryClient();
 
@@ -33,7 +34,11 @@
 
   const deleteMutation = createMutation(() => ({
     mutationFn: (id: string) => deleteCategory(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['categories'] })
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['categories'] });
+      toast.success('Categoría eliminada');
+    },
+    onError: (err: Error) => toast.error(err.message, 'No se pudo eliminar')
   }));
 
   onMount(async () => {

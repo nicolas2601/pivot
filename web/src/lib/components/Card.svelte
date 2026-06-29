@@ -10,7 +10,7 @@
   let { href, onclick, children }: Props = $props();
 
   const baseClass =
-    'block bg-surface-card text-ink rounded-xl border border-hairline p-6 transition-shadow hover:shadow-card-hover';
+    'block bg-surface-card text-ink rounded-xl border border-hairline p-6 lift';
 </script>
 
 {#if href}
