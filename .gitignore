@@ -60,3 +60,6 @@ test-output/
 # Local tool artifacts (Atlassian, misc)
 /.atl/
 /token-optimizer/
+
+# Git worktrees (local feature work, never commit the worktree dir itself)
+/.worktrees/
