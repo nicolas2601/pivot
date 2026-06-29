@@ -66,20 +66,37 @@ Backend ya está wired; frontend debe tener:
 - [ ] PR description (pendiente — no hay remote)
 - [ ] Merge a main cuando se decida (squash o 5 commits?)
 
-### 📋 #2 — Backend unit tests para nuevos packages
-Branch: `feat/backend-tests-phase3` → worktree `.worktrees/feat-backend-tests-phase3/`
-Estado: 📋 backlog
-Packages sin tests aún:
-- [ ] `transactions` (atomic transfers, splits, settlements)
-- [ ] `travel` (balance calculator, splits, settlements)
-- [ ] `budgets` (alert_level calculation)
-- [ ] `reports` (category/account/monthly aggregations)
-- [ ] `goals` (deposit/withdraw, percent complete, overdue logic)
-- [ ] `recurring` (NextOccurrence math, OccurrencesBetween)
-Problema: tests existentes requieren Docker (testcontainers). Hay 2 caminos:
-- (a) Configurar Postgres en docker-compose para dev y usar testcontainers
-- (b) Refactorizar para usar SQLite in-memory en unit tests (más rápido, sin Docker)
-Recomendación: (b) para unit tests de lógica pura + integration tests con Docker.
+### 📋 #2 — Backend unit tests para nuevos packages ✅
+Branch: `feat/backend-tests-phase3` → merged to main (commit facebbc)
+Estado: ✅ done (88 new tests, all passing, no Docker required)
+
+**Strategy used**: mock-based unit tests with hand-written fakes implementing
+the existing Repository / Lookup interfaces. Zero external dependencies,
+no Docker, no testcontainers, no Postgres. Fast (~10ms per package).
+
+Tests added:
+- `recurring/` — 23 tests (model: IsValidFrequency/TxType, NextOccurrence all
+  cadences incl. interval+1 + end-date, OccurrencesBetween; service: Create
+  validation, GenerateToday with idempotency + tx-creator error, RunNow,
+  Delete ownership). Injectable clock for deterministic "today".
+- `goals/` — 22 tests (PercentComplete clamp logic, ToDTO percent/overdue
+  combinatorics with relative dates so test stays correct over time; service:
+  Create validation incl. RFC3339 deadline, Deposit/Withdraw/Update/Delete).
+- `transactions/` — 14 tests (IsValidType, Create happy-path + every error
+  path, Transfer happy-path + same-account/currency-mismatch rejections,
+  Update rejects transfer mutation, Delete cascades pair, CreateFromRecurring
+  for the recurring engine).
+- `travel/` — 13 tests (group/member CRUD with ownership, expense splits:
+  equal leftover cents distribution, exact sum check, percentage bps check;
+  ComputeSettlements greedy algorithm verified for 2-user, 3-user optimal,
+  zero-balance edge cases; settlement record + confirm by recipient).
+- `budgets/` — 9 tests (IsValidPeriod, Create validation + end<start,
+  Update clear_end_date + new period, Delete ownership).
+- `reports/` — 7 tests (ByCategory/ByAccount/MonthlyTrend shape mapping,
+  BudgetVsActual difference math: overspent/under/no-spending, nil budget
+  lookup returns nil rows).
+
+Verification: `go test ./internal/...` → 88 new tests passing, backend build clean.
 
 ### 📋 #3 — E2E Playwright
 Branch: `feat/e2e-playwright` → worktree `.worktrees/feat-e2e-playwright/`
