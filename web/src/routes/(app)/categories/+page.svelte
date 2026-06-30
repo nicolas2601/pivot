@@ -105,6 +105,13 @@
     };
   });
 
+  type TotalKey = 'total' | 'expense' | 'income';
+  const statTiles: ReadonlyArray<{ k: TotalKey; l: string }> = [
+    { k: 'total', l: 'Total' },
+    { k: 'expense', l: 'Gastos' },
+    { k: 'income', l: 'Ingresos' }
+  ];
+
   const filterTabs = [
     { id: 'all', label: 'Todas' },
     { id: 'expense', label: 'Gastos' },
@@ -113,9 +120,9 @@
 
   // Soft pastel que se le da a cada card de categoría como tinte de fondo
   // (10% alpha). Si la API no devuelve color caemos al hairline del design.
-  function bgFor(color?: string) {
+  function bgFor(color?: string | null): string {
     if (!color) return '#f0efed';
-    return color + '26'; // 15% alpha
+    return color + '26'; // ~15% alpha
   }
 </script>
 
@@ -146,7 +153,7 @@
           class="grid grid-cols-3 gap-3"
           in:fly={{ y: 12, duration: 500, easing: quintOut, delay: 80 }}
         >
-          {#each [{ k: 'total', l: 'Total' }, { k: 'expense', l: 'Gastos' }, { k: 'income', l: 'Ingresos' }] as s}
+          {#each statTiles as s (s.k)}
             <div class="bg-surface-card border border-hairline rounded-2xl px-4 py-3 text-center">
               <p class="text-xs uppercase tracking-wider text-muted">{s.l}</p>
               <p class="font-waldenburg text-3xl text-ink leading-none mt-1">{totals()[s.k]}</p>

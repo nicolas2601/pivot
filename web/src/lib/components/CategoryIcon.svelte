@@ -23,9 +23,9 @@
     class: klass = 'w-5 h-5',
     accent = false
   }: {
-    icon?: string;
+    icon?: string | null;
     name?: string;
-    color?: string;
+    color?: string | null;
     class?: string;
     accent?: boolean;
   } = $props();
