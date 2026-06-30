@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"github.com/nicolas/finanzas/backend/internal/accounts"
 	"github.com/nicolas/finanzas/backend/internal/auth"
@@ -89,7 +90,44 @@ func main() {
 	txSvc := transactions.NewService(txRepo, txAccountAdapter, txCategoryAdapter)
 	budgetSvc := budgets.NewService(budgetRepo, budgetCategoryAdapter)
 	travelSvc := travel.NewService(travelRepo, travelUserAdapter)
-	reportSvc := reports.NewService(txRepo, reportBudgetAdapter)
+
+	// Lightweight projections for the reports service. The reports package
+	// only needs name + color, so we copy from the full model on each call
+	// (one query per dashboard load — cheap because gorm caches the query
+	// plan and the underlying query is index-only on user_id).
+	categoriesListForReports := func(userID uuid.UUID, _ string) ([]reports.CategoryLite, error) {
+		cs, err := catSvc.List(userID, "")
+		if err != nil {
+			return nil, err
+		}
+		out := make([]reports.CategoryLite, 0, len(cs))
+		for _, c := range cs {
+			color := ""
+			if c.Color != nil {
+				color = *c.Color
+			}
+			out = append(out, reports.CategoryLite{ID: c.ID, Name: c.Name, Color: color})
+		}
+		return out, nil
+	}
+	accountsListForReports := func(userID uuid.UUID) ([]reports.AccountLite, error) {
+		as, err := accSvc.List(userID)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]reports.AccountLite, 0, len(as))
+		for _, a := range as {
+			out = append(out, reports.AccountLite{ID: a.ID, Name: a.Name})
+		}
+		return out, nil
+	}
+
+	reportSvc := reports.NewService(
+		txRepo,
+		reportBudgetAdapter,
+		reports.CategoriesAdapter(categoriesListForReports),
+		reports.AccountsAdapter(accountsListForReports),
+	)
 	goalSvc := goals.NewService(goalRepo, goalAccountAdapter)
 	recurringTxAdapter := transactions.NewRecurringTxCreatorAdapter(txSvc)
 	recurringSvc := recurring.NewService(recurringRepo, recurringAccountAdapter, recurringCategoryAdapter, recurringTxAdapter, recurringUserAdapter)

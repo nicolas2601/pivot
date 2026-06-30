@@ -32,6 +32,14 @@ type Repository interface {
 	SumByAccount(userID uuid.UUID, from, to time.Time) ([]AccountSum, error)
 	// MonthlyTrend groups expenses by year-month between [from, to].
 	MonthlyTrend(userID uuid.UUID, from, to time.Time) ([]MonthlyTotal, error)
+	// AmountsByDay aggregates tx amounts by calendar date, filtered by tx
+	// type. Returned map key is "YYYY-MM-DD". Used by /reports/summary +
+	// /reports/cashflow so we don't parse string dates in app code.
+	AmountsByDay(userID uuid.UUID, from, to time.Time, txType string) (map[string]int64, error)
+	// MonthlyTrendAmountsByMonth — same as MonthlyTrend but parameterized on
+	// type so we can build dual-line trend series (income + expense) in
+	// the reports layer.
+	MonthlyTrendAmountsByMonth(userID uuid.UUID, from, to time.Time, txType string) ([]MonthlyTotal, error)
 }
 
 // ListFilter holds optional filters for ListByUser. Zero values mean "no filter".
@@ -197,18 +205,23 @@ func (r *repo) SumByAccount(userID uuid.UUID, from, to time.Time) ([]AccountSum,
 }
 
 func (r *repo) MonthlyTrend(userID uuid.UUID, from, to time.Time) ([]MonthlyTotal, error) {
+	return r.MonthlyTrendAmountsByMonth(userID, from, to, string(TypeExpense))
+}
+
+// MonthlyTrendAmountsByMonth is the same as MonthlyTrend but the tx
+// type is passed in. Used by /reports/monthly-trend to render a dual-line
+// sparkline (income + expense in two separate calls, joined in memory by
+// the reports service).
+func (r *repo) MonthlyTrendAmountsByMonth(userID uuid.UUID, from, to time.Time, txType string) ([]MonthlyTotal, error) {
 	type row struct {
 		MonthStart time.Time
 		Total      int64
 	}
 	var rows []row
-	// The GROUP BY expression MUST match the SELECT expression for Postgres
-	// to consider the SELECT columns functionally dependent. We select
-	// date_trunc('month', date) as the single grouping key.
 	err := r.db.Model(&Transaction{}).
 		Select("date_trunc('month', date) AS month_start, SUM(amount) AS total").
 		Where("user_id = ? AND deleted_at IS NULL AND type = ? AND date BETWEEN ? AND ?",
-			userID, TypeExpense, from, to).
+			userID, txType, from, to).
 		Group("date_trunc('month', date)").
 		Order("date_trunc('month', date) ASC").
 		Find(&rows).Error
@@ -217,10 +230,33 @@ func (r *repo) MonthlyTrend(userID uuid.UUID, from, to time.Time) ([]MonthlyTota
 	}
 	out := make([]MonthlyTotal, 0, len(rows))
 	for _, r := range rows {
-		// r.MonthStart is a pure date so we slice the year/month back out in Go
-		// — this avoids any chance of "column not in GROUP BY" errors at runtime.
 		y, m, _ := r.MonthStart.UTC().Date()
 		out = append(out, MonthlyTotal{Year: y, Month: int(m), Total: r.Total})
+	}
+	return out, nil
+}
+
+// AmountsByDay returns a map of YYYY-MM-DD → total amount for the given
+// tx type within [from, to]. Returned as map so the caller can read each
+// day in O(1) without server-side grouping when merging income+expense.
+func (r *repo) AmountsByDay(userID uuid.UUID, from, to time.Time, txType string) (map[string]int64, error) {
+	type row struct {
+		Date  time.Time
+		Total int64
+	}
+	var rows []row
+	err := r.db.Model(&Transaction{}).
+		Select("date, SUM(amount) AS total").
+		Where("user_id = ? AND deleted_at IS NULL AND type = ? AND date BETWEEN ? AND ?",
+			userID, txType, from, to).
+		Group("date").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]int64, len(rows))
+	for _, r := range rows {
+		out[r.Date.UTC().Format("2006-01-02")] = r.Total
 	}
 	return out, nil
 }

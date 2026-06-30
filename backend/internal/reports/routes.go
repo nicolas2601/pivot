@@ -10,5 +10,7 @@ func RegisterRoutes(r *gin.RouterGroup, h *Handler, requireAuth gin.HandlerFunc)
 		g.GET("/by-account", h.ByAccount)
 		g.GET("/monthly-trend", h.MonthlyTrend)
 		g.GET("/budget-vs-actual", h.BudgetVsActual)
+		g.GET("/summary", h.Summary)
+		g.GET("/cashflow", h.Cashflow)
 	}
 }

@@ -1,6 +1,8 @@
 package reports
 
 import (
+	"fmt"
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,12 +16,38 @@ import (
 // We deliberately keep this package thin: it owns no tables and no domain
 // types — it composes queries and shapes the result for the API.
 type Service struct {
-	tx      transactions.Repository
-	budgets BudgetLookup
+	tx         transactions.Repository
+	budgets    BudgetLookup
+	categories CategoriesLookup
+	accounts   AccountsLookup
 }
 
 type BudgetLookup interface {
 	ListByUser(userID uuid.UUID) ([]BudgetSummary, error)
+}
+
+// CategoriesLookup is the minimal interface the reports layer needs to
+// enrich by-category aggregations with category names and tints. Returning
+// a small projection (instead of importing the categories package)
+// keeps reports decoupled.
+type CategoriesLookup interface {
+	List(userID uuid.UUID, categoryType string) ([]CategoryLite, error)
+}
+
+// AccountsLookup mirrors CategoriesLookup for by-account aggregations.
+type AccountsLookup interface {
+	List(userID uuid.UUID) ([]AccountLite, error)
+}
+
+type CategoryLite struct {
+	ID    uuid.UUID
+	Name  string
+	Color string
+}
+
+type AccountLite struct {
+	ID   uuid.UUID
+	Name string
 }
 
 // BudgetSummary is the minimal projection of a budget the reports layer
@@ -35,8 +63,8 @@ type BudgetSummary struct {
 	EndDate    *time.Time
 }
 
-func NewService(tx transactions.Repository, budgets BudgetLookup) *Service {
-	return &Service{tx: tx, budgets: budgets}
+func NewService(tx transactions.Repository, budgets BudgetLookup, cats CategoriesLookup, accs AccountsLookup) *Service {
+	return &Service{tx: tx, budgets: budgets, categories: cats, accounts: accs}
 }
 
 // CategoryTotal is one row in the "expenses by category" breakdown.
@@ -72,40 +100,209 @@ type BudgetActualRow struct {
 
 // --- Queries ---
 
-func (s *Service) ByCategory(userID uuid.UUID, from, to time.Time) ([]CategoryTotal, error) {
+func (s *Service) ByCategory(userID uuid.UUID, from, to time.Time) ([]CategoryReportItem, error) {
 	raw, err := s.tx.SumByCategory(userID, from, to)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]CategoryTotal, 0, len(raw))
+	if len(raw) == 0 {
+		return []CategoryReportItem{}, nil
+	}
+	// Lookup category names + colors in one query, build a map for O(1)
+	// joins below.
+	cats, err := s.categories.List(userID, "")
+	if err != nil {
+		return nil, err
+	}
+	catByID := make(map[uuid.UUID]CategoryLite, len(cats))
+	for _, c := range cats {
+		catByID[c.ID] = c
+	}
+	var total int64
 	for _, r := range raw {
-		out = append(out, CategoryTotal{CategoryID: r.CategoryID, Total: r.Total})
+		total += r.Total
+	}
+	out := make([]CategoryReportItem, 0, len(raw))
+	for _, r := range raw {
+		if r.CategoryID == nil {
+			continue
+		}
+		var pct float64
+		if total > 0 {
+			pct = float64(r.Total) * 100 / float64(total)
+		}
+		c := catByID[*r.CategoryID]
+		out = append(out, CategoryReportItem{
+			CategoryID: *r.CategoryID,
+			Name:       c.Name,
+			Color:      c.Color,
+			Amount:     r.Total,
+			Percent:    pct,
+			Count:      0, // populated via /reports/by-category?with_count=true later if needed
+		})
 	}
 	return out, nil
 }
 
-func (s *Service) ByAccount(userID uuid.UUID, from, to time.Time) ([]AccountTotal, error) {
+func (s *Service) ByAccount(userID uuid.UUID, from, to time.Time) ([]AccountReportItem, error) {
 	raw, err := s.tx.SumByAccount(userID, from, to)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]AccountTotal, 0, len(raw))
+	if len(raw) == 0 {
+		return []AccountReportItem{}, nil
+	}
+	accs, err := s.accounts.List(userID)
+	if err != nil {
+		return nil, err
+	}
+	accByID := make(map[uuid.UUID]AccountLite, len(accs))
+	for _, a := range accs {
+		accByID[a.ID] = a
+	}
+	out := make([]AccountReportItem, 0, len(raw))
 	for _, r := range raw {
-		out = append(out, AccountTotal{AccountID: r.AccountID, Total: r.Total})
+		a := accByID[r.AccountID]
+		out = append(out, AccountReportItem{
+			AccountID: r.AccountID,
+			Name:      a.Name,
+			Balance:   0, // Filled by /accounts/with-balance endpoint in v2.
+			Income:    0,
+			Expense:   r.Total,
+		})
 	}
 	return out, nil
 }
 
-func (s *Service) MonthlyTrend(userID uuid.UUID, from, to time.Time) ([]MonthlyPoint, error) {
-	raw, err := s.tx.MonthlyTrend(userID, from, to)
+func (s *Service) MonthlyTrend(userID uuid.UUID, from, to time.Time) ([]MonthlyTrendItem, error) {
+	// Returns income AND expense per month in two round-trips (one per
+	// side) so the front-end can render a dual-line sparkline. In v2
+	// this will be a single CTE; for now two queries is fine and still
+	// O(2) instead of O(2N).
+	expenseRaw, err := s.tx.MonthlyTrend(userID, from, to)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]MonthlyPoint, 0, len(raw))
-	for _, r := range raw {
-		out = append(out, MonthlyPoint{Year: r.Year, Month: r.Month, Total: r.Total})
+	incomeByMonth, err := s.monthlyIncome(userID, from, to)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]MonthlyTrendItem, 0, len(expenseRaw))
+	for _, r := range expenseRaw {
+		key := monthKey(r.Year, r.Month)
+		out = append(out, MonthlyTrendItem{
+			Year:    r.Year,
+			Month:   r.Month,
+			Income:  incomeByMonth[key],
+			Expense: r.Total,
+			Net:     incomeByMonth[key] - r.Total,
+		})
 	}
 	return out, nil
+}
+
+// monthKey returns "YYYY-MM" — used as a map key for joining
+// income/expense series in memory.
+func monthKey(y, m int) string {
+	return fmt.Sprintf("%04d-%02d", y, m)
+}
+
+// monthlyIncome groups income transactions by year-month within the
+// given window. Returns a "YYYY-MM" → total map for easy join with the
+// expense series in MonthlyTrend.
+func (s *Service) monthlyIncome(userID uuid.UUID, from, to time.Time) (map[string]int64, error) {
+	rows, err := s.tx.MonthlyTrendAmountsByMonth(userID, from, to, string(transactions.TypeIncome))
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]int64, len(rows))
+	for _, r := range rows {
+		out[monthKey(r.Year, r.Month)] = r.Total
+	}
+	return out, nil
+}
+
+// Summary computes the dashboard's headline numbers plus a per-day
+// breakdown. Two aggregate queries (income by day, expense by day), joined
+// in memory.
+func (s *Service) Summary(userID uuid.UUID, from, to time.Time) (*SummaryReport, error) {
+	incByDay, err := s.tx.AmountsByDay(userID, from, to, string(transactions.TypeIncome))
+	if err != nil {
+		return nil, err
+	}
+	expByDay, err := s.tx.AmountsByDay(userID, from, to, string(transactions.TypeExpense))
+	if err != nil {
+		return nil, err
+	}
+	days := make(map[string]bool, len(incByDay)+len(expByDay))
+	for d := range incByDay {
+		days[d] = true
+	}
+	for d := range expByDay {
+		days[d] = true
+	}
+	type kv struct {
+		date string
+		d    time.Time
+	}
+	pairs := make([]kv, 0, len(days))
+	for d := range days {
+		t, err := time.Parse("2006-01-02", d)
+		if err != nil {
+			continue
+		}
+		pairs = append(pairs, kv{date: d, d: t})
+	}
+	sort.Slice(pairs, func(i, j int) bool { return pairs[i].d.Before(pairs[j].d) })
+	byDay := make([]DailySummary, 0, len(pairs))
+	var totalIncome, totalExpense int64
+	for _, p := range pairs {
+		inc := incByDay[p.date]
+		exp := expByDay[p.date]
+		byDay = append(byDay, DailySummary{Date: p.date, Income: inc, Expense: exp})
+		totalIncome += inc
+		totalExpense += exp
+	}
+	return &SummaryReport{
+		From:        from,
+		To:          to,
+		TotalIncome: totalIncome,
+		TotalExpense: totalExpense,
+		Net:         totalIncome - totalExpense,
+		ByDay:       byDay,
+	}, nil
+}
+
+// Cashflow returns aggregate income/expense for the window plus a
+// savings rate.
+func (s *Service) Cashflow(userID uuid.UUID, from, to time.Time) (*CashflowReport, error) {
+	incByDay, err := s.tx.AmountsByDay(userID, from, to, string(transactions.TypeIncome))
+	if err != nil {
+		return nil, err
+	}
+	expByDay, err := s.tx.AmountsByDay(userID, from, to, string(transactions.TypeExpense))
+	if err != nil {
+		return nil, err
+	}
+	var income, expense int64
+	for _, v := range incByDay {
+		income += v
+	}
+	for _, v := range expByDay {
+		expense += v
+	}
+	var rate float64
+	if income+expense > 0 {
+		rate = float64(income-expense) * 100 / float64(income+expense)
+	}
+	return &CashflowReport{
+		From:         from,
+		To:           to,
+		Income:       income,
+		Expense:      expense,
+		SavingsRate:  rate,
+		SavingsTotal: income - expense,
+	}, nil
 }
 
 // BudgetVsActual computes each budget's actual spending for the period that

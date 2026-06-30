@@ -2,6 +2,8 @@ package reports
 
 import (
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type RangeQuery struct {
@@ -34,25 +36,77 @@ func (q RangeQuery) Resolved() (time.Time, time.Time, error) {
 }
 
 type ByCategoryResponse struct {
-	From      time.Time       `json:"from"`
-	To        time.Time       `json:"to"`
-	Breakdown []CategoryTotal `json:"breakdown"`
+	From       time.Time             `json:"from"`
+	To         time.Time             `json:"to"`
+	Categories []CategoryReportItem `json:"categories"`
+}
+
+type CategoryReportItem struct {
+	CategoryID uuid.UUID `json:"category_id"`
+	Name       string    `json:"name"`
+	Color      string    `json:"color"`
+	Amount     int64     `json:"amount"`
+	Percent    float64   `json:"percent"`
+	Count      int64     `json:"count"`
 }
 
 type ByAccountResponse struct {
-	From      time.Time      `json:"from"`
-	To        time.Time      `json:"to"`
-	Breakdown []AccountTotal `json:"breakdown"`
+	From      time.Time            `json:"from"`
+	To        time.Time            `json:"to"`
+	Accounts  []AccountReportItem `json:"accounts"`
+}
+
+type AccountReportItem struct {
+	AccountID uuid.UUID `json:"account_id"`
+	Name      string    `json:"name"`
+	Balance   int64     `json:"balance"`
+	Income    int64     `json:"income"`
+	Expense   int64     `json:"expense"`
 }
 
 type MonthlyTrendResponse struct {
-	From   time.Time      `json:"from"`
-	To     time.Time      `json:"to"`
-	Points []MonthlyPoint `json:"points"`
+	From   time.Time          `json:"from"`
+	To     time.Time          `json:"to"`
+	Months []MonthlyTrendItem `json:"months"`
+}
+
+type MonthlyTrendItem struct {
+	Year    int   `json:"year"`
+	Month   int   `json:"month"`
+	Income  int64 `json:"income"`
+	Expense int64 `json:"expense"`
+	Net     int64 `json:"net"`
 }
 
 type BudgetVsActualResponse struct {
 	From time.Time         `json:"from"`
 	To   time.Time         `json:"to"`
 	Rows []BudgetActualRow `json:"rows"`
+}
+
+// Summary is the dashboard's "this month vs last month" payload.
+// Shape mirrors web/src/lib/schemas/report.ts → SummaryReportSchema.
+type SummaryReport struct {
+	From        time.Time     `json:"from"`
+	To          time.Time     `json:"to"`
+	TotalIncome int64          `json:"total_income"`
+	TotalExpense int64         `json:"total_expense"`
+	Net         int64          `json:"net"`
+	ByDay       []DailySummary `json:"by_day"`
+}
+
+type DailySummary struct {
+	Date   string `json:"date"`
+	Income int64  `json:"income"`
+	Expense int64 `json:"expense"`
+}
+
+// Cashflow mirrors web → CashflowReportSchema.
+type CashflowReport struct {
+	From         time.Time `json:"from"`
+	To           time.Time `json:"to"`
+	Income       int64     `json:"income"`
+	Expense      int64     `json:"expense"`
+	SavingsRate  float64   `json:"savings_rate"`
+	SavingsTotal int64     `json:"savings_total"`
 }

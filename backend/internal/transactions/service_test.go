@@ -83,11 +83,13 @@ func (f *fakeCategory) GetByID(id, _ uuid.UUID) (bool, error) {
 
 // fakeTxRepo implements Repository for service tests.
 type fakeTxRepo struct {
-	mu          sync.Mutex
-	transactions map[uuid.UUID]*Transaction
-	pairs       map[uuid.UUID]bool
-	createErr   error
-	transferErr error
+	mu             sync.Mutex
+	transactions   map[uuid.UUID]*Transaction
+	pairs          map[uuid.UUID]bool
+	createErr      error
+	transferErr    error
+	monthlyTrend   []MonthlyTotal
+	amountsByDay   map[string]int64
 }
 
 func newFakeTxRepo() *fakeTxRepo {
@@ -201,7 +203,13 @@ func (f *fakeTxRepo) SumByAccount(_ uuid.UUID, _, _ time.Time) ([]AccountSum, er
 }
 
 func (f *fakeTxRepo) MonthlyTrend(_ uuid.UUID, _, _ time.Time) ([]MonthlyTotal, error) {
-	return nil, nil
+	return f.monthlyTrend, nil
+}
+func (f *fakeTxRepo) MonthlyTrendAmountsByMonth(_ uuid.UUID, _, _ time.Time, _ string) ([]MonthlyTotal, error) {
+	return f.monthlyTrend, nil
+}
+func (f *fakeTxRepo) AmountsByDay(_ uuid.UUID, _, _ time.Time, _ string) (map[string]int64, error) {
+	return f.amountsByDay, nil
 }
 
 // ──────────────────────────── Service tests ────────────────────────────
